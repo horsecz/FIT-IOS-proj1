@@ -1,0 +1,307 @@
+#!/bin/sh
+#
+
+##
+### IOS-proj1:  dirgraph
+### FIT VUT
+###
+### Author:     Dominik Horky
+### Class:      1BIT
+### Date:       31.03.2020
+###
+### Comment:    This script analyzes $PWD or [DIR] directory and reports number of files, folders there
+###             and prints histogram of file sizes.
+###
+### Return:     0   -> success
+### (exit code) 1   -> (fatal) failure or error
+###             2   -> non-fatal error occured
+###             3   -> interrupt (SIGINT detected when counting files)
+###
+### Additional features:
+###             -h option           ->  prints help message
+###             Updating counter    ->  instead of printing directly with 'printf' after all files are counted
+###                                     (= files counter cycle ends), line 'All files: %d' is updated after each
+###                                     iteration (=> better user experience)
+###                                     after each iteration 
+###             SIGINT modified     ->  when cycling (= processing, counting) files, SIGINT breaks the cycle -
+###                                     this causes to print histogram from all 'processed' data only (not all data!)
+###                                     (in any other case, it does default system action)
+###             Permission warning  ->  script does not end when it hasn't enough permissions, just prints warning
+###                                     message (below normal output) and ends with exit code 1
+## 
+
+#
+# VARIABLES
+#
+
+# usage string used in '-h' or in 'bad usage message'
+USAGE_STRING="Usage: dirgraph [-i FILE_ERE] [-n] [DIR]
+           [DIR]   directory to be scanned (no-option-default: actual direcory)
+           -i      ignore all files/directiories with 'FILE_ERE' name
+           -n      normalize histogram
+           -h      prints this message"
+
+# script must be posixly correct
+export POSIXLY_CORRECT=yes
+
+# script (argument[s]) variables - used for parsing arguments
+DIR="."
+ignore=0
+ignore_string=""
+normalize=0
+
+# function variables
+ERR_FIND=0
+dir_count=0
+export files_count=0
+ignore_count=0
+files=0
+stop=0
+
+# 'outputHistogram ()' variables - sizes of files (used in histogram)
+SIZE_1=0    #   <100 B
+SIZE_2=0    #   <1 KiB
+SIZE_3=0    #   <10 KiB
+SIZE_4=0    #   <100 KiB
+SIZE_5=0    #   <1  MiB
+SIZE_6=0    #   <10 MiB
+SIZE_7=0    #   <100 MiB
+SIZE_8=0    #   <1 GiB
+SIZE_9=0    #   >=1 GiB
+
+# 10 20 30 10 50 10
+# sum: 130
+# 13 2
+
+#
+# FUNCTIONS
+#
+
+# void normalizeData ();
+# normalizes histogram if needed
+normalizeData () {
+    MAX_HASHES=0
+    if [ -t 1 ]; then
+        MAX_HASHES=$(tput cols)
+        MAX_HASHES=$((MAX_HASHES-1-12))
+    else
+        MAX_HASHES=79
+    fi
+
+    HIGHEST_VAL=0
+    for hist_size in $SIZE_1 $SIZE_2 $SIZE_3 $SIZE_4 $SIZE_5 $SIZE_6 $SIZE_7 $SIZE_8 $SIZE_9; do
+        if [ "$hist_size" -ge "$HIGHEST_VAL" ]; then
+            HIGHEST_VAL=$hist_size
+        fi
+    done
+
+    if [ "$HIGHEST_VAL" -ge "$MAX_HASHES" ]; then
+        SIZE_1=$(echo "scale=10;($SIZE_1/$HIGHEST_VAL)*$MAX_HASHES" | bc)
+        SIZE_2=$(echo "scale=10;($SIZE_2/$HIGHEST_VAL)*$MAX_HASHES" | bc)
+        SIZE_3=$(echo "scale=10;($SIZE_3/$HIGHEST_VAL)*$MAX_HASHES" | bc)
+        SIZE_4=$(echo "scale=10;($SIZE_4/$HIGHEST_VAL)*$MAX_HASHES" | bc)
+        SIZE_5=$(echo "scale=10;($SIZE_5/$HIGHEST_VAL)*$MAX_HASHES" | bc)
+        SIZE_6=$(echo "scale=10;($SIZE_6/$HIGHEST_VAL)*$MAX_HASHES" | bc)
+        SIZE_7=$(echo "scale=10;($SIZE_7/$HIGHEST_VAL)*$MAX_HASHES" | bc)
+        SIZE_8=$(echo "scale=10;($SIZE_8/$HIGHEST_VAL)*$MAX_HASHES" | bc)
+        SIZE_9=$(echo "scale=10;($SIZE_9/$HIGHEST_VAL)*$MAX_HASHES" | bc)
+    fi
+}
+
+# void outputHistogram ();
+# prints histogram of file sizes
+outputHistogram () {
+    if [ $normalize -eq 1 ]; then
+        normalizeData
+    fi
+    echo "$SIZE_1" "$SIZE_2" "$SIZE_3" "$SIZE_4" "$SIZE_5" "$SIZE_6" "$SIZE_7" "$SIZE_8" "$SIZE_9" | awk '
+
+    function getSizeString(row){
+        string[1]="  <100 B  ";
+        string[2]="  <1 KiB  ";
+        string[3]="  <10 KiB ";
+        string[4]="  <100 KiB";
+        string[5]="  <1 MiB  ";
+        string[6]="  <10 MiB ";
+        string[7]="  <100 MiB";
+        string[8]="  <1 GiB  ";
+        string[9]="  >=1 GiB ";
+        return string[row]
+    }
+
+     END{
+        print "File size histogram:"
+        for(i = 1; i < 10; i++){
+            s=""
+            if ($i > 0)
+                s=sprintf("%*s",$i,FS);
+            gsub(FS,"#",s); 
+            size_string=getSizeString(i);
+            print size_string":", s
+        }
+    }'
+}
+
+# void update_filesizes ( int size );
+# updates 'SIZE_x' variables depending on file size (in bytes)
+update_filesizes () {
+    size=$(stat -c "%s" "$1" 2>/dev/null)
+    
+    if [ "$size" -le 100 ] 2>/dev/null; then
+        SIZE_1=$((SIZE_1+1))
+    elif [ "$size" -le 1024 ] 2>/dev/null; then
+        SIZE_2=$((SIZE_2+1))
+    elif [ "$size" -le 10240 ] 2>/dev/null; then
+        SIZE_3=$((SIZE_3+1))
+    elif [ "$size" -le 102400 ] 2>/dev/null; then
+        SIZE_4=$((SIZE_4+1))
+    elif [ "$size" -le 1024000 ] 2>/dev/null; then
+        SIZE_5=$((SIZE_5+1))
+    elif [ "$size" -le 10240000 ] 2>/dev/null; then
+        SIZE_6=$((SIZE_6+1))
+    elif [ "$size" -le 102400000 ] 2>/dev/null; then
+        SIZE_7=$((SIZE_7+1))
+    elif [ "$size" -le 1024000000 ] 2>/dev/null; then
+        SIZE_8=$((SIZE_8+1))
+    elif [ "$size" -ge 1024000000 ] 2>/dev/null; then
+        SIZE_9=$((SIZE_9+1))
+    fi
+}
+
+# void ignore_update ( char* directories_list );
+# counts files and directores which are ignored in search
+ignore_dirs_update () {
+    if [ $ignore -eq 1 ]; then
+        if [ "$(echo "$PWD" | grep /"$ignore_string"$)" = "$PWD" ] || [ "$ignore_string" = "$DIR" ]; then
+            err_msg "Ignored string FILE_ERE can not contain root directory name!"
+        else
+            ignore_count=$(echo "$1" | grep -a -c "$ignore_string"$)
+            ignore_count_folder=$(echo "$1" | grep -a -c /"$ignore_string"/)
+            ignore_count=$((ignore_count+ignore_count_folder))
+        fi
+    fi
+}
+
+# void count_dirs ( char* start_directory );
+# counts total directories
+count_dirs () {
+    if ! dirs=$(find "$1" -type d 2>/dev/null); then
+        ERR_FIND=1
+    fi
+    ignore_dirs_update "$dirs"
+    dir_count=$(echo "$dirs" | wc -l)
+    dir_count=$((dir_count-ignore_count))
+    echo Directories: "$dir_count"
+}
+
+# void count_files ( char* start_directory );
+# counts total files
+count_files () {
+    files="$(find "$1" -type f 2>/dev/null)"
+    DEF_IFS="$IFS"
+    IFS=$'\n'
+    for line in $files; do
+        trap stop=1 INT # interrupt this cycle when SIGINT detected
+        if [ "$line" = "" ]; then
+            echo empty 1>/dev/null
+        elif [ $stop -eq 1 ]; then
+            break
+        elif [ $ignore -eq 1 ]; then
+            if [ -z "$(printf "%s" "$line" | grep -a /"$ignore_string")" ]; then
+                update_filesizes "$line"
+                files_count=$((files_count+1))
+            fi
+        else
+            update_filesizes "$line"
+            files_count=$((files_count+1))
+        fi
+        printf "\rAll files: %d\r" $files_count
+    done
+    IFS="$DEF_IFS"
+    printf "\rAll files: %d\n" $files_count
+}
+
+# void err_msg ( char* message );
+# prints error message and ends script
+err_msg () {
+    if [ "$#" -eq 1 ]; then
+        printf "ERROR: %s\n" "$1" >&2
+        exit 2;
+    fi
+}
+
+# void usage_msg ( bool error );
+# prints usage (string) and ends script
+usage_msg () {
+    if [ "$#" -eq 1 ] && [ "$1" -eq 1 ]; then
+        printf "Bad usage or syntax.\n" >&2
+        printf "%s\n" "$USAGE_STRING"
+        exit 1;
+    elif [ "$#" -eq 0 ] || { [ "$#" -eq 1 ] && [ "$1" -eq 0 ]; } ; then
+        printf "%s\n" "$USAGE_STRING"
+        exit 0;
+    fi
+}
+
+# int main ( void );
+# equivalent for 'C' main function
+main () {
+echo Root directory: "$DIR"
+count_dirs "$DIR/"
+count_files "$DIR/"
+outputHistogram
+
+if [ $stop -eq 1 ]; then
+    printf "Script has stopped. This output is not complete | correct ! (SIGINT detected)\n" >&2
+    exit 3;
+fi
+if [ $ERR_FIND -ne 0 ]; then
+    printf "WARNING: Data may not be accurate due to error(s) that occured while processing files or directories.\n" >&2
+    exit 2;
+fi
+}
+
+#
+# INIT
+#
+
+# PARSE OPTION ("-[a-z]") ARGUMENTS
+while getopts ":i:nh" o; do
+    case "${o}" in
+        i)
+            ignore_string=${OPTARG}
+            ignore=1
+            ;;
+        n)
+            normalize=1
+            ;;
+        h)
+            usage_msg 0
+            ;;
+        *)
+            usage_msg 1
+            ;;
+    esac
+done
+shift $((OPTIND-1))
+
+# LOOK FOR [DIR] ARGUMENT
+if [ $# -eq 1 ]; then
+    if [ -d "$1" ] && [ -r "$1" ]; then
+        DIR=$1
+    elif ! [ -e "$1" ]; then
+        err_msg "Directory '$1' does not exist!"
+    elif ! [ -d "$1" ]; then
+        err_msg "Argument '$1' is not a directory!"
+    elif ! [ -r "$1" ]; then
+        err_msg "Cannot access directory '$1' (missing permissions)!"
+    fi
+elif [ $# -ge 2 ]; then
+    usage_msg 1
+fi
+
+# START THE SCRIPT
+main
+
+# END OF SCRIPT (if it's successful)
+exit 0;

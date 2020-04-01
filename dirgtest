@@ -1,0 +1,361 @@
+#!/bin/sh
+# testing script for './dirgraph' - IOS proj1
+# use: run without arguments or run with argument 'desc' to show detailed description of tests
+# test does not include -n option and histogram
+# return values: expected return value 1 <=> script expects nonzero value (not only 1)
+
+################################################
+################################################  TEST FUNCITONS
+################################################
+
+ALL=0
+output_1=0
+output_2=0
+output_3=0
+output_4=0
+TOTAL_ERR=0
+res_1=0
+
+# $1  = rootdir
+# $2  = dirs
+# $3  = files
+# $4  = return value (expected)
+expectedSuccOutput () {
+  output_1="$(printf "Root directory: $1\n")"
+  output_2="$(printf "Directories: $2\n")"
+  output_3="$(printf "All files: $3\n")"
+  output_4=$4
+}
+
+# $1  = test_id
+# $2  = test_description
+# $3  = return value (real)
+checkSuccess () {
+  NAME="$1"
+  DESC="$2"
+  ERR=0
+
+  val=$(echo "$res_1" | cut -d$'\n' -f1 | grep -a "$output_1")
+  val2=$(echo "$res_1" | cut -d$'\n' -f2 | grep -a "$output_2")
+  val3=$(echo "$res_1" | cut -d$'\n' -f3 | grep -a "$output_3")
+  val4=$3
+  if ! [ -n "$val" ]; then
+    ERR=1
+    TOTAL_ERR=1
+  fi
+  if ! [ -n "$val2" ]; then
+    ERR=1
+    TOTAL_ERR=1
+  fi
+  if ! [ -n "$val3" ]; then
+    ERR=1
+    TOTAL_ERR=1
+  fi
+  if ! [ $val4 -eq 0 ] && [ $output_4 -eq 0 ]; then
+    ERR=1
+    TOTAL_ERR=1
+  elif ! [ $val4 -ge 1 ] && [ $output_4 -ge 1 ]; then
+    ERR=1
+    TOTAL_ERR=1
+  fi
+
+  if [ $ERR -eq 1 ]; then
+    printf "TEST_$NAME FAILED   ($DESC)\n----------   EXPECTED:   ----------\n"
+    printf "%s\n%s\n%s\n\nReturn value: %d" "$output_1" "$output_2" "$output_3" "$output_4"
+    printf "\n----------   GOT:        ----------\n"
+    printf "%s\n\nReturn value: %d\n\n" "$(echo "$res_1" | cut -d$'\n' -f1-3)" "$val4"
+  elif [ $ALL -eq 1 ]; then
+    printf "\n--------------------\nTEST_$NAME PASSED   ($DESC)\n----------   EXPECTED:   ----------\n"
+    printf "%s\n%s\n%s\n\nReturn value: %d" "$output_1" "$output_2" "$output_3" "$output_4"
+    printf "\n----------   GOT:        ----------\n"
+    printf "%s\n\nReturn value: %d\n\n" "$(echo "$res_1" | cut -d$'\n' -f1-3)" "$val4"
+  else
+    printf "TEST_$NAME PASSED   ($DESC)\n"
+  fi
+}
+
+# $1  = test_id
+# $2  = test_description
+# $3  = real return value
+checkFailure () {
+  NAME="$1"
+  DESC="$2"
+  ERR=0
+  output_4=1
+  val4=$3
+
+  if [ $3 -eq 0 ]; then
+    ERR=1
+    TOTAL_ERR=1
+  fi
+
+  if [ $ERR -eq 1 ]; then
+    printf "TEST_$NAME FAILED   ($DESC)\n----------   EXPECTED:   ----------\n"
+    printf "Return value: %d" "$output_4"
+    printf "\n----------   GOT:        ----------\n"
+    printf "%s\n\nReturn value: %d\n\n" "$(echo "$res_1" | cut -d$'\n' -f1-3)" "$val4"
+  elif [ $ALL -eq 1 ]; then
+    printf "\n--------------------\nTEST_$NAME PASSED   ($DESC)\n----------   EXPECTED:   ----------\n"
+    printf "Return value: %d" "$output_4"
+    printf "\n----------   GOT:        ----------\n"
+    printf "%s\n\nReturn value: %d\n\n" "$(echo "$res_1" | cut -d$'\n' -f1-3)" "$val4"
+  else
+    printf "TEST_$NAME PASSED   ($DESC)\n"
+  fi
+}
+
+################################################
+################################################  TESTS
+################################################
+
+# empty folder
+TEST_0 () {
+  mkdir t_folder
+  cd t_folder
+
+  res_1=$(../dirgraph 2>/dev/null)
+  return=$?
+  cd ..
+
+  expectedSuccOutput "." "1" "0" 0
+  checkSuccess "0" "EMPTY_DIR_NOARG" $return
+}
+
+# empty folder (in arg)
+TEST_1 () {
+  res_1=$(./dirgraph t_folder 2>/dev/null)
+  return=$?
+
+  expectedSuccOutput "t_folder" "1" "0" 0
+  checkSuccess "1" "EMPTY_DIR_ARG" $return
+}
+
+# nonempty folder (folders)
+TEST_2 () {
+  mkdir t_folder/1
+  mkdir t_folder/a
+  mkdir t_folder/good_folder
+  mkdir 't_folder/bad folder'
+  mkdir 't_folder/super bad 69420 folder'
+  res_1=$(./dirgraph t_folder 2>/dev/null)
+  return=$?
+
+  expectedSuccOutput "t_folder" "6" "0" 0
+  checkSuccess "2" "NONEMPTY_DIR" $return
+}
+
+# nonempty folder (folders + folders without permission)
+TEST_3 () {
+  mkdir t_folder/noperm
+  mkdir t_folder/noperm2
+  chmod -r t_folder/noperm
+  chmod -w t_folder/noperm2
+  res_1=$(./dirgraph t_folder 2>/dev/null)
+  return=$?
+
+  checkFailure "3" "NONEMPTY_DIR_PERMS" $return
+}
+
+# nonempty folder (subdirs)
+TEST_4 () {
+  rm -rf t_folder/noperm*
+
+  mkdir t_folder/inside1
+  mkdir t_folder/inside2
+  mkdir t_folder/inside1/subdir1
+  mkdir 't_folder/inside1/subdir1/big brown poopy folder'
+
+  res_1=$(./dirgraph t_folder 2>/dev/null)
+  return=$?
+
+  expectedSuccOutput "t_folder" "10" "0" 0
+  checkSuccess "4" "NONEMPTY_DIR_SUBDIRS" $return
+}
+
+# nonempty folder (files)
+TEST_5 () {
+  rm -rf t_folder/*
+  touch t_folder/some_file
+  touch t_folder/better_file
+  touch 't_folder/bloody file'
+
+  res_1=$(./dirgraph t_folder 2>/dev/null)
+  return=$?
+  expectedSuccOutput "t_folder" "1" "3" 0
+  checkSuccess "5_1" "NONEMPTY_DIR_FILES" $return
+
+  mkdir t_folder/.hiddenone
+  mkdir t_folder/.hiddentwo
+  touch t_folder/.hiddentwo/.file
+
+  res_1=$(./dirgraph t_folder 2>/dev/null)
+  return=$?
+  expectedSuccOutput "t_folder" "3" "4" 0
+  checkSuccess "5_2" "NONEMPTY_DIR_HIDDEN" $return
+
+  rm -rf t_folder/.hiddenone t_folder/.hiddentwo
+}
+
+# nonempty folder (files + noperm files)
+TEST_6 () {
+  touch t_folder/noperm
+  chmod -r t_folder/noperm
+
+  res_1=$(./dirgraph t_folder 2>/dev/null)
+  return=$?
+
+  expectedSuccOutput "t_folder" "1" "4" 0
+  checkSuccess "6" "NONEMPTY_DIR_FILES_NOPERM" $return
+}
+
+# nonexisting folder
+TEST_7 () {
+  res_1=$(./dirgraph t_folder/nonexisting_folder 2>/dev/null)
+  return=$?
+  checkFailure "7_1" "NONEXISTING_FOLDER" $return
+
+  res_1=$(./dirgraph 't_folder/folder i dont see' 2>/dev/null)
+  return=$?
+  checkFailure "7_2" "NONEXISTING_FOLDER_WITH_SPACE" $return
+
+  res_1=$(./dirgraph '69 nicoSmug' 2>/dev/null)
+  return=$?
+  checkFailure "7_3" "NONEXISTING_FOLDER_STRING" $return
+}
+
+# bad options -*
+TEST_8 () {
+  res_1=$(./dirgraph -c 2>/dev/null)
+  return=$?
+  checkFailure "8_1" "BADOPT_1" $return
+
+  res_1=$(./dirgraph -poopy 2>/dev/null)
+  return=$?
+  checkFailure "8_2" "BADOPT_2" $return
+
+  res_1=$(./dirgraph -1 2>/dev/null)
+  return=$?
+  checkFailure "8_3" "BADOPT_3" $return
+
+  res_1=$(./dirgraph -i 2>/dev/null)
+  return=$?
+  checkFailure "8_4" "NO_I_OPT" $return
+}
+
+# arguments test
+TEST_9 () {
+  res_1=$(./dirgraph a 98 2>/dev/null)
+  return=$?
+  checkFailure "9_1" "BADARGS_1" $return
+
+  res_1=$(./dirgraph some shitty arguments i dont care about 2>/dev/null)
+  return=$?
+  checkFailure "9_2" "BADARGS_2" $return
+
+  cd t_folder
+  rm -rf *
+  res_1=$(../dirgraph . 2>/dev/null)
+  return=$?
+
+  expectedSuccOutput "." "1" "0" 0
+  checkSuccess "9_4" "GOODARG_1" $return
+  cd ..
+}
+
+# testing arg: -i
+TEST_10 () {
+  mkdir t_folder/testf
+  mkdir t_folder/f2
+  touch t_folder/file
+  touch t_folder/file2
+
+  res_1=$(./dirgraph -i "$PWD" t_folder 2>/dev/null)
+  return=$?
+  expectedSuccOutput "t_folder" "3" "2" 0
+  checkSuccess "10_1" "OPT_I_PWD" $return
+
+  res_1=$(./dirgraph -i t_folder t_folder 2>/dev/null)
+  return=$?
+  checkFailure "10_2" "OPT_I_PWDPART" $return
+
+  res_1=$(./dirgraph -i poop t_folder 2>/dev/null)
+  return=$?
+  expectedSuccOutput "t_folder" "3" "2" 0
+  checkSuccess "10_3" "OPT_I_NONEXIST_FILE" $return
+
+  res_1=$(./dirgraph -i file t_folder 2>/dev/null)
+  return=$?
+  expectedSuccOutput "t_folder" "3" "0" 0
+  checkSuccess "10_4" "OPT_I_FILE" $return
+
+  res_1=$(./dirgraph -i file2 t_folder 2>/dev/null)
+  return=$?
+  expectedSuccOutput "t_folder" "3" "1" 0
+  checkSuccess "10_5" "OPT_I_FILE_ONLY" $return
+
+  touch t_folder/testf_file
+  touch t_folder/testf/ignored1
+  touch t_folder/testf/ignored2
+  touch t_folder/testf/ignored3
+  touch t_folder/testf/ignored69
+
+  res_1=$(./dirgraph -i testf t_folder 2>/dev/null)
+  return=$?
+  expectedSuccOutput "t_folder" "2" "2" 0
+  checkSuccess "10_6" "OPT_I_FOLDER" $return
+
+  cd t_folder
+  res_1=$(../dirgraph -i testf 2>/dev/null)
+  return=$?
+  expectedSuccOutput "." "2" "2" 0
+  checkSuccess "10_7" "OPT_I_FOLDER_NOARG" $return
+  cd ..
+}
+
+################################################
+################################################  INIT, PARSING ARGUMENTS, EXIT
+################################################
+
+main () {
+  if [ -e t_folder ]; then
+    rm -rf t_folder
+  fi
+
+  printf "\n>>>>>>>>>>\nFILES|DIRS COUNTER TESTS\n>>>>>>>>>>\n\n"
+
+  TEST_0
+  TEST_1
+  TEST_2
+  TEST_3
+  TEST_4
+  TEST_5
+  TEST_6
+
+  printf "\n>>>>>>>>>>\nBAD ARGUMENTS AND USAGE TESTS\n>>>>>>>>>>\n\n"
+
+  TEST_7
+  TEST_8
+  TEST_9
+
+  printf "\n>>>>>>>>>>\nOPTION -i\n>>>>>>>>>>\n\n"
+
+  TEST_10
+
+  printf "\n>>>>>>>>>>\nCONCLUSION\n>>>>>>>>>>\n\n"
+  if [ $TOTAL_ERR -eq 0 ]; then
+      printf "PASSED ALL TESTS!\n\n"
+  else
+      printf "DID NOT PASS SOME TESTS!\n\n"
+  fi
+
+  rm -rf t_folder
+}
+
+if [ $# -eq 1 ]; then
+  if [ $1 = "desc" ]; then
+    ALL=1
+  fi
+fi
+
+main
+exit 0;
