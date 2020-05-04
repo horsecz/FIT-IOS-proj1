@@ -8,7 +8,6 @@
 
 # Poznamka
 - Ve skriptu byly chyby, ktere zpusobily poprve dost nehezke hodnoceni, proto jsem vypracoval patch, ktery opravoval nasledujici chyby:
-  - nekompatibilita: IFS=$'\n' zmeneno na IFS="
-  "
+  - nekompatibilita: IFS=$'\n' zmeneno na IFS=" " (= enter -> \n -> newline)
   - spatny histogram: ve skriptu bylo -le (<=) misto -lt (<)
   - chybny vystup do souboru: smazany prubezne printf "\r .." u All files, ktere zpusobovaly rozbiti vypisu pri stdout=soubor
