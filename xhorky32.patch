@@ -1,0 +1,65 @@
+--- dirgraph.odevzdany	2020-04-13 15:35:45.240002307 +0200
++++ dirgraph	2020-04-18 00:49:58.005965412 +0200
+@@ -19,10 +19,6 @@
+ ###
+ ### Additional features:
+ ###             -h option           ->  prints help message
+-###             Updating counter    ->  instead of printing directly with 'printf' after all files are counted
+-###                                     (= files counter cycle ends), line 'All files: %d' is updated after each
+-###                                     iteration (=> better user experience)
+-###                                     after each iteration 
+ ###             SIGINT modified     ->  when cycling (= processing, counting) files, SIGINT breaks the cycle -
+ ###                                     this causes to print histogram from all 'processed' data only (not all data!)
+ ###                                     (in any other case, it does default system action)
+@@ -148,21 +144,21 @@
+ update_filesizes () {
+     size=$(stat -c "%s" "$1" 2>/dev/null)
+     
+-    if [ "$size" -le 100 ] 2>/dev/null; then
++    if [ "$size" -lt 100 ] 2>/dev/null; then
+         SIZE_1=$((SIZE_1+1))
+-    elif [ "$size" -le 1024 ] 2>/dev/null; then
++    elif [ "$size" -lt 1024 ] 2>/dev/null; then
+         SIZE_2=$((SIZE_2+1))
+-    elif [ "$size" -le 10240 ] 2>/dev/null; then
++    elif [ "$size" -lt 10240 ] 2>/dev/null; then
+         SIZE_3=$((SIZE_3+1))
+-    elif [ "$size" -le 102400 ] 2>/dev/null; then
++    elif [ "$size" -lt 102400 ] 2>/dev/null; then
+         SIZE_4=$((SIZE_4+1))
+-    elif [ "$size" -le 1024000 ] 2>/dev/null; then
++    elif [ "$size" -lt 1024000 ] 2>/dev/null; then
+         SIZE_5=$((SIZE_5+1))
+-    elif [ "$size" -le 10240000 ] 2>/dev/null; then
++    elif [ "$size" -lt 10240000 ] 2>/dev/null; then
+         SIZE_6=$((SIZE_6+1))
+-    elif [ "$size" -le 102400000 ] 2>/dev/null; then
++    elif [ "$size" -lt 102400000 ] 2>/dev/null; then
+         SIZE_7=$((SIZE_7+1))
+-    elif [ "$size" -le 1024000000 ] 2>/dev/null; then
++    elif [ "$size" -lt 1024000000 ] 2>/dev/null; then
+         SIZE_8=$((SIZE_8+1))
+     elif [ "$size" -ge 1024000000 ] 2>/dev/null; then
+         SIZE_9=$((SIZE_9+1))
+@@ -200,7 +196,8 @@
+ count_files () {
+     files="$(find "$1" -type f 2>/dev/null)"
+     DEF_IFS="$IFS"
+-    IFS=$'\n'
++    IFS="
++"
+     for line in $files; do
+         trap stop=1 INT # interrupt this cycle when SIGINT detected
+         if [ "$line" = "" ]; then
+@@ -216,10 +213,9 @@
+             update_filesizes "$line"
+             files_count=$((files_count+1))
+         fi
+-        printf "\rAll files: %d\r" $files_count
+     done
+     IFS="$DEF_IFS"
+-    printf "\rAll files: %d\n" $files_count
++    printf "All files: %d\n" $files_count
+ }
+ 
+ # void err_msg ( char* message );
